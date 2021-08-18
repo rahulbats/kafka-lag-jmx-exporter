@@ -6,15 +6,19 @@ import org.apache.kafka.clients.admin.*;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.management.*;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
+
 import java.util.stream.Collectors;
 
 public class ExportTask extends TimerTask {
+    static Logger log = LoggerFactory.getLogger(ExportTask.class.getName());
     private AdminClient adminClient = null;
     private KafkaConsumer consumer = null;
 
@@ -61,7 +65,7 @@ public class ExportTask extends TimerTask {
                                    return lag;
                                 })
                         );
-        System.out.println("these are the lags "+lags);
+        log.info( "these are the lags for group "+groupId+":"+lags);
         return lags;
     }
 
@@ -93,7 +97,7 @@ public class ExportTask extends TimerTask {
         } catch (ExecutionException e) {
             e.printStackTrace();
         }
-        System.out.println("Consumer groups lag data exported at "+new Date());
+        log.debug("Consumer groups lag data exported at "+new Date());
 
     }
 }
