@@ -5,7 +5,7 @@
 * This app allows you to connect to multiple clusters. Metrics for each will be logged under a diferent clusterid. 
 ### How to run
 1. build the jar using `mvn clean package`
-2. Create a properties file for connecting to Kafka. Prepend each property with a cluster name except the interval. Refer the sample properties file under `src/main/resources`.
+2. Create a properties file for connecting to Kafka. Prepend each property with a cluster name except the interval. Refer the sample properties file under [`src/main/resources`](./src/main/resources/kafka.properties).
 3. To use jconsole to view the metrics.
    * Run with the jmx parameters enabled like this `java  -Dcom.sun.management.jmxremote.port=9999 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false  -jar target/kafka-lag-jmx-exporter-1.0-SNAPSHOT-jar-with-dependencies.jar ./main/resources/kafka.properties`
    * Open `jconsole` in another terminal
