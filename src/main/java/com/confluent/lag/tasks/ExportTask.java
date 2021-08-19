@@ -19,18 +19,36 @@ import java.util.stream.Collectors;
 
 public class ExportTask extends TimerTask {
     static Logger log = LoggerFactory.getLogger(ExportTask.class.getName());
-    private AdminClient adminClient = null;
-    private KafkaConsumer consumer = null;
+    private Map<String,AdminClient> adminClients = null;
+    private Map<String, KafkaConsumer>  consumers = null;
 
     public ExportTask(Properties kafkaConnectionProperties) throws IOException {
-         //conf.put(AdminClientConfig.REQUEST_TIMEOUT_MS_CONFIG, "5000");
-        adminClient = AdminClient.create(kafkaConnectionProperties);
-        kafkaConnectionProperties.put("key.deserializer","org.apache.kafka.common.serialization.StringDeserializer");
-        kafkaConnectionProperties.put("value.deserializer","org.apache.kafka.common.serialization.StringDeserializer");
-        consumer = new KafkaConsumer<>(kafkaConnectionProperties);
+        Enumeration propertyNames =  kafkaConnectionProperties.propertyNames();
+        Map<String, Properties>  propertiesMap = new HashMap<>();
+        while (propertyNames.hasMoreElements()) {
+            String property = (String) propertyNames.nextElement();
+            String clusterId = property.substring(0, property.indexOf('.'));
+            Properties properties = propertiesMap.get(clusterId);
+            if(properties==null) {
+                properties = new Properties();
+                properties.put("key.deserializer","org.apache.kafka.common.serialization.StringDeserializer");
+                properties.put("value.deserializer","org.apache.kafka.common.serialization.StringDeserializer");
+                propertiesMap.put(clusterId, properties);
+            }
+            properties.put(property.substring(property.indexOf('.')+1),kafkaConnectionProperties.get(property));
+        }
+        adminClients =propertiesMap.entrySet().stream().collect(Collectors.toMap(
+                entry-> entry.getKey(),
+                entry-> AdminClient.create(entry.getValue())
+        ));
+        consumers =propertiesMap.entrySet().stream().collect(Collectors.toMap(
+                entry-> entry.getKey(),
+                entry-> new KafkaConsumer<>(entry.getValue())
+        ));
+
     }
 
-    private Map<TopicPartition, Long> getConsumerGroupData(String groupId)  throws InterruptedException, ExecutionException{
+    private Map<TopicPartition, Long> getConsumerGroupData(String clusterId, String groupId, AdminClient adminClient, KafkaConsumer consumer)  throws InterruptedException, ExecutionException{
         ListConsumerGroupOffsetsResult info = adminClient.listConsumerGroupOffsets(groupId);
         Map<TopicPartition, OffsetAndMetadata> topicPartitionOffsetAndMetadataMap = info.partitionsToOffsetAndMetadata().get();
         MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
@@ -49,8 +67,8 @@ public class ExportTask extends TimerTask {
                                     long lag = entry.getValue()-groupOffset.get(entry.getKey());
                                     try {
 
-                                        objectName = new ObjectName( "com.confluent.consumergroup:type=metrics,groupid="+groupId+",topic="+entry.getKey().topic()+",partition="+entry.getKey().partition());
-                                        GroupMetricsMbean groupMetrics = new GroupMetrics(entry.getValue(), groupOffset.get(entry.getKey()), lag);
+                                        objectName = new ObjectName( "com.confluent.consumergroup:type=metrics,clusterid="+clusterId+",groupid="+groupId+",topic="+entry.getKey().topic()+",partition="+entry.getKey().partition());
+                                        GroupMetricsMbean groupMetrics = new GroupMetrics( entry.getValue(), groupOffset.get(entry.getKey()), lag);
                                         StandardMBean groupMetricsMbean = new StandardMBean(groupMetrics, GroupMetricsMbean.class);
                                         try {
                                             mBeanServer.registerMBean(groupMetricsMbean, objectName );
@@ -69,14 +87,14 @@ public class ExportTask extends TimerTask {
         return lags;
     }
 
-    private void getConsumerGroupsData() throws InterruptedException, ExecutionException{
+    private void getConsumerGroupsData(String clusterId, AdminClient adminClient, KafkaConsumer consumer) throws ExecutionException, InterruptedException {
         ListConsumerGroupsResult consumerGroupsResult = adminClient.listConsumerGroups();
         Collection<ConsumerGroupListing> consumerGroupListings = consumerGroupsResult.all().get();
         consumerGroupListings.stream().forEach(consumerGroupListing -> {
             String groupId = consumerGroupListing.groupId();
-            System.out.println("getting lag for consumer group "+groupId);
+            System.out.println("getting lag for consumer group "+groupId+", cluster: "+clusterId);
             try {
-                getConsumerGroupData(groupId);
+                getConsumerGroupData(clusterId, groupId, adminClient, consumer);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             } catch (ExecutionException e) {
@@ -90,13 +108,18 @@ public class ExportTask extends TimerTask {
 
     @Override
     public void run() {
-        try {
-            getConsumerGroupsData();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        } catch (ExecutionException e) {
-            e.printStackTrace();
-        }
+
+        adminClients.entrySet().forEach(adminClientEntry -> {
+            try {
+                getConsumerGroupsData(adminClientEntry.getKey(), adminClientEntry.getValue(), consumers.get(adminClientEntry.getKey()));
+            } catch (ExecutionException e) {
+                e.printStackTrace();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        });
+
+
         log.debug("Consumer groups lag data exported at "+new Date());
 
     }

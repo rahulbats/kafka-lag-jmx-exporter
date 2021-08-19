@@ -18,7 +18,8 @@ public class LagExporter {
                 System.out.println("Needs the path of the properties file");
             }
             kafkaConnectionProperties.load(new FileInputStream(new File(args[0])));
-
-            t.scheduleAtFixedRate(new ExportTask(kafkaConnectionProperties), 0, Long.parseLong(kafkaConnectionProperties.getProperty("interval")));
+            long interval =  Long.parseLong(kafkaConnectionProperties.getProperty("interval"));
+            kafkaConnectionProperties.remove("interval");
+            t.scheduleAtFixedRate(new ExportTask(kafkaConnectionProperties), 0,interval);
         }
 }

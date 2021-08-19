@@ -7,4 +7,5 @@ public interface GroupMetricsMbean {
     public void setCurrent(long current);
     public long getLag();
     public void setLag(long lag);
+
 }
